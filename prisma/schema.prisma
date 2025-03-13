@@ -1,0 +1,405 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+// Base fields will be shared through Prisma mixins instead of inheritance
+// We'll use this pattern consistently throughout the schema
+
+model User {
+    id               String    @id @default(cuid())
+    name             String?
+    email            String    @unique
+    password         String?
+    image            String?
+    emailVerified    DateTime?
+    resetToken       String?   @unique
+    resetTokenExpiry DateTime?
+    createdAt        DateTime  @default(now())
+    updatedAt        DateTime  @updatedAt
+    deletedAt        DateTime?
+    createdBy        String?
+    updatedBy        String?
+    role             Role      @default(USER)
+    loans            Loan[]    @relation("UserLoanLender")
+    accounts         Account[]
+    sessions         Session[]
+    borrowerProfile  Borrower?
+    lenderProfile    Lender?
+
+    @@index([email])
+    @@index([role])
+    @@index([deletedAt])
+}
+
+model Borrower {
+    id                   String             @id @default(cuid())
+    createdAt            DateTime           @default(now())
+    updatedAt            DateTime           @updatedAt
+    deletedAt            DateTime?
+    createdBy            String?
+    updatedBy            String?
+    userId               String             @unique
+    user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+    primaryAddress       String?
+    phoneNumber          String?            @unique
+    creditScore          Int?
+    monthlyIncome        Float?
+    employmentStatus     EmploymentStatus?  @default(UNKNOWN)
+    employer             String?
+    employmentStartDate  DateTime?
+    employmentEndDate    DateTime?
+    taxIdentificationNum String?            @unique
+    dateOfBirth          DateTime?
+    loans                Loan[]
+    documents            BorrowerDocument[]
+
+    @@index([userId])
+    @@index([creditScore])
+    @@index([employmentStatus])
+    @@index([deletedAt])
+}
+
+model Lender {
+    id                   String        @id @default(cuid())
+    createdAt            DateTime      @default(now())
+    updatedAt            DateTime      @updatedAt
+    deletedAt            DateTime?
+    createdBy            String?
+    updatedBy            String?
+    userId               String        @unique
+    user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+    companyName          String?
+    businessType         BusinessType? @default(INDIVIDUAL)
+    registrationNumber   String?       @unique
+    taxIdentificationNum String?       @unique
+    primaryAddress       String?
+    phoneNumber          String?       @unique
+    websiteUrl           String?
+    lendingPreferences   Json?
+    isVerified           Boolean       @default(false)
+    verificationDate     DateTime?
+    Loan                 Loan[]
+
+    @@index([userId])
+    @@index([businessType])
+    @@index([isVerified])
+    @@index([deletedAt])
+}
+
+model Account {
+    id                String    @id @default(cuid())
+    createdAt         DateTime  @default(now())
+    updatedAt         DateTime  @updatedAt
+    deletedAt         DateTime?
+    userId            String
+    type              String
+    provider          String
+    providerAccountId String
+    refresh_token     String?   @db.Text
+    access_token      String?   @db.Text
+    expires_at        Int?
+    token_type        String?
+    scope             String?
+    id_token          String?   @db.Text
+    session_state     String?
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([provider, providerAccountId])
+    @@index([userId])
+    @@index([expires_at])
+    @@index([deletedAt])
+}
+
+model Session {
+    id           String    @id @default(cuid())
+    createdAt    DateTime  @default(now())
+    updatedAt    DateTime  @updatedAt
+    deletedAt    DateTime?
+    sessionToken String    @unique
+    userId       String
+    expires      DateTime
+    user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId])
+    @@index([expires])
+    @@index([deletedAt])
+}
+
+model VerificationToken {
+    identifier String
+    token      String   @unique
+    expires    DateTime
+    createdAt  DateTime @default(now())
+
+    @@unique([identifier, token])
+    @@index([expires])
+    @@index([identifier])
+}
+
+model Loan {
+    id                  String           @id @default(cuid())
+    createdAt           DateTime         @default(now())
+    updatedAt           DateTime         @updatedAt
+    deletedAt           DateTime?
+    createdBy           String?
+    updatedBy           String?
+    title               String
+    amount              Float
+    interestRate        Float
+    term                Int
+    termUnit            LoanTermUnit     @default(MONTHS)
+    collateral          String?
+    startDate           DateTime
+    endDate             DateTime
+    status              LoanStatus       @default(PENDING)
+    purpose             String?
+    description         String?          @db.Text
+    lenderId            String?
+    borrowerId          String
+    lender              Lender?          @relation(fields: [lenderId], references: [id])
+    borrower            Borrower         @relation(fields: [borrowerId], references: [id])
+    documents           Document[]
+    repaymentSchedule   RepaymentItem[]
+    isCollateralized    Boolean          @default(false)
+    riskRating          Int? // Risk score from 1-100
+    apr                 Float? // Annual percentage rate (different from interest rate)
+    lateFeePercentage   Float?           @default(0)
+    lateFeeFixedAmount  Float?           @default(0)
+    disbursementDate    DateTime?
+    lastPaymentDate     DateTime?
+    totalAmountPaid     Float?           @default(0)
+    nextPaymentDueDate  DateTime?
+    remainingBalance    Float?
+    paymentFrequency    PaymentFrequency @default(MONTHLY)
+    totalInterestAmount Float?
+    loanTags            LoanTag[]        @relation("LoanToTag")
+    notes               String?
+    user                User?            @relation("UserLoanLender", fields: [userId], references: [id])
+    userId              String?
+
+    @@index([borrowerId])
+    @@index([lenderId])
+    @@index([status])
+    @@index([startDate])
+    @@index([endDate])
+    @@index([nextPaymentDueDate])
+    @@index([deletedAt])
+    @@index([riskRating])
+}
+
+model LoanTag {
+    id        String    @id @default(cuid())
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    deletedAt DateTime?
+    createdBy String?
+    updatedBy String?
+    name      String    @unique
+    color     String?
+    loans     Loan[]    @relation("LoanToTag")
+
+    @@index([name])
+    @@index([deletedAt])
+}
+
+model Document {
+    id          String    @id @default(cuid())
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+    deletedAt   DateTime?
+    createdBy   String?
+    updatedBy   String?
+    name        String
+    fileUrl     String
+    fileType    String
+    description String?
+    loanId      String
+    uploadedAt  DateTime  @default(now())
+    uploadedBy  String?
+    loan        Loan      @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+    @@index([loanId])
+    @@index([fileType])
+    @@index([uploadedAt])
+    @@index([deletedAt])
+}
+
+model BorrowerDocument {
+    id          String    @id @default(cuid())
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+    deletedAt   DateTime?
+    createdBy   String?
+    updatedBy   String?
+    name        String
+    fileUrl     String
+    fileType    String
+    description String?
+    borrowerId  String
+    docType     DocType
+    uploadedAt  DateTime  @default(now())
+    uploadedBy  String?
+    borrower    Borrower  @relation(fields: [borrowerId], references: [id], onDelete: Cascade)
+
+    @@index([borrowerId])
+    @@index([docType])
+    @@index([uploadedAt])
+    @@index([deletedAt])
+}
+
+model RepaymentItem {
+    id              String          @id @default(cuid())
+    createdAt       DateTime        @default(now())
+    updatedAt       DateTime        @updatedAt
+    deletedAt       DateTime?
+    createdBy       String?
+    updatedBy       String?
+    loanId          String
+    dueDate         DateTime
+    amount          Float
+    status          RepaymentStatus @default(PENDING)
+    paidAmount      Float?
+    paidDate        DateTime?
+    interestAmount  Float?
+    principalAmount Float?
+    paymentMethod   PaymentMethod?
+    transactionId   String?         @unique
+    loan            Loan            @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+    @@index([loanId])
+    @@index([dueDate])
+    @@index([status])
+    @@index([paidDate])
+    @@index([deletedAt])
+}
+
+// Audit trail for tracking changes
+model AuditLog {
+    id         String     @id @default(cuid())
+    createdAt  DateTime   @default(now())
+    entityId   String
+    entityType EntityType
+    action     ActionType
+    oldValue   Json?
+    newValue   Json?
+    userId     String? // Who performed the action
+    ipAddress  String?
+    userAgent  String?
+
+    @@index([entityId, entityType])
+    @@index([userId])
+    @@index([action])
+    @@index([createdAt])
+}
+
+enum Role {
+    USER
+    ADMIN
+    LENDER
+    BORROWER
+}
+
+enum LoanStatus {
+    PENDING
+    APPROVED
+    ACTIVE
+    COMPLETED
+    DEFAULTED
+    REJECTED
+    CANCELLED
+    RESTRUCTURED
+    IN_REVIEW
+}
+
+enum LoanTermUnit {
+    DAYS
+    WEEKS
+    MONTHS
+    YEARS
+}
+
+enum RepaymentStatus {
+    PENDING
+    PAID
+    PARTIAL
+    LATE
+    DEFAULTED
+}
+
+enum PaymentMethod {
+    BANK_TRANSFER
+    CREDIT_CARD
+    DEBIT_CARD
+    CASH
+    CHECK
+    MOBILE_PAYMENT
+    OTHER
+}
+
+enum PaymentFrequency {
+    DAILY
+    WEEKLY
+    BI_WEEKLY
+    MONTHLY
+    QUARTERLY
+    SEMI_ANNUALLY
+    ANNUALLY
+}
+
+enum EntityType {
+    USER
+    LOAN
+    BORROWER
+    LENDER
+    DOCUMENT
+    REPAYMENT
+    NOTE
+    TAG
+}
+
+enum ActionType {
+    CREATE
+    UPDATE
+    DELETE
+    RESTORE
+}
+
+enum EmploymentStatus {
+    EMPLOYED
+    SELF_EMPLOYED
+    UNEMPLOYED
+    RETIRED
+    STUDENT
+    UNKNOWN
+}
+
+enum BusinessType {
+    INDIVIDUAL
+    SOLE_PROPRIETORSHIP
+    PARTNERSHIP
+    LLC
+    CORPORATION
+    NONPROFIT
+    OTHER
+}
+
+enum DocType {
+    ID_PROOF
+    ADDRESS_PROOF
+    INCOME_PROOF
+    BANK_STATEMENT
+    TAX_RETURN
+    EMPLOYMENT_VERIFICATION
+    COLLATERAL_DOCUMENT
+    CREDIT_REPORT
+    OTHER
+}
